@@ -4,20 +4,26 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os/user"
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
-const driverName = "mysql"
+const (
+	driverName    = "mysql"
+	defaultHost   = "localhost"
+	defaultPort   = "3306"
+	defaultSocket = "/tmp/mysql.sock"
+)
 
 type Database struct {
 	Host           string
 	Port           string
 	Socket         string
+	Name           string
 	User           string
 	Password       string
-	Database       string
 	Params         map[string]string
 	dataSourceName string
 }
@@ -37,8 +43,13 @@ func (db *Database) DataSourceName() (string, error) {
 	}
 
 	if db.ValidOptions() {
-		db.dataSourceName = fmt.Sprintf("%s:%s@%s/%s%s", db.User,
-			db.Password, db.address(), db.Database, db.dsnOptions())
+		user, err := db.selectUser()
+		if err != nil {
+			return "", err
+		}
+
+		db.dataSourceName = fmt.Sprintf("%s:%s@%s/%s%s", user,
+			db.Password, db.address(), db.Name, db.dsnOptions())
 		return db.DataSourceName, nil
 	} else {
 		return "", errors.New("Invalid options. Can't create DSN.")
@@ -46,29 +57,50 @@ func (db *Database) DataSourceName() (string, error) {
 }
 
 func (db *Database) ValidOptions() bool {
-	for _, item := range []string{db.User, db.Database} {
+	for _, item := range []string{db.User, db.Name} {
 		if len(item) < 1 {
 			return false
-		}
-	}
-
-	if len(db.Socket) < 1 {
-		for _, item := range []string{db.Host, db.Port} {
-			if len(item) < 1 {
-				return false
-			}
 		}
 	}
 
 	return true
 }
 
+func (db *Database) selectUser() (string, error) {
+	if len(db.User) > 0 {
+		return db.User
+	}
+
+	user, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return user.Username, nil
+}
+
 func (db *Database) address() string {
-	if len(db.Socket) > 0 {
+	sockSize := len(db.Socket)
+	hostSize := len(db.Host)
+	portSize := len(db.Port)
+
+	if sockSize > 0 {
 		return fmt.Sprintf("unix(%s)", db.Socket)
-	} else {
+	}
+
+	if (hostSize + portSize) > 0 {
+		if hostSize == 0 {
+			db.Host = defaultHost
+		}
+
+		if portSize == 0 {
+			db.Port = defaultPort
+		}
+
 		return fmt.Sprintf("tcp(%s:%s)", db.Host, db.Port)
 	}
+
+	db.Socket = defaultSocket
+	return fmt.Sprintf("unix(%s)", db.Socket)
 }
 
 func (db *Database) dsnOptions() string {
