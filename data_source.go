@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -12,10 +12,15 @@ type DataSource struct {
 	paths  []string
 }
 
-func NewDataSource(source string) *DataSource {
-	return &DataSource{
-		Source: filepath.Abs(source),
+func NewDataSource(source string) (*DataSource, error) {
+	absPath, err := filepath.Abs(source)
+	if err != nil {
+		return nil, err
 	}
+
+	return &DataSource{
+		Source: absPath,
+	}, nil
 }
 
 func (ds *DataSource) Paths() ([]string, error) {
@@ -29,9 +34,12 @@ func (ds *DataSource) Paths() ([]string, error) {
 	}
 
 	if src.IsDir() {
-		pattern := path.Join(db.Source, "**", "*.yml")
+		pattern := path.Join(ds.Source, "**", "*.yml")
 		matches, err := filepath.Glob(pattern)
-		db.paths = matches
+		ds.paths = matches
 		return matches, err
 	}
+
+	ds.paths = []string{ds.Source}
+	return ds.paths, nil
 }

@@ -33,13 +33,18 @@ func NewDatabase() *Database {
 }
 
 func (db *Database) Open() (*sql.DB, error) {
-	return sql.Open(driverName, db.DataSourceName())
+	dsn, err := db.DataSourceName()
+	if err != nil {
+		return nil, err
+	}
+
+	return sql.Open(driverName, dsn)
 }
 
 func (db *Database) DataSourceName() (string, error) {
 	// returns data source name from cache
 	if len(db.dataSourceName) > 0 {
-		return db.dataSourceName
+		return db.dataSourceName, nil
 	}
 
 	if db.ValidOptions() {
@@ -50,7 +55,7 @@ func (db *Database) DataSourceName() (string, error) {
 
 		db.dataSourceName = fmt.Sprintf("%s:%s@%s/%s%s", user,
 			db.Password, db.address(), db.Name, db.dsnOptions())
-		return db.DataSourceName, nil
+		return db.dataSourceName, nil
 	} else {
 		return "", errors.New("Invalid options. Can't create DSN.")
 	}
@@ -68,7 +73,7 @@ func (db *Database) ValidOptions() bool {
 
 func (db *Database) selectUser() (string, error) {
 	if len(db.User) > 0 {
-		return db.User
+		return db.User, nil
 	}
 
 	user, err := user.Current()
