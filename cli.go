@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
+	"sync"
 )
 
 const (
@@ -14,6 +16,7 @@ const (
 const (
 	ExitCodeOK = iota
 	ExitCodeFlagParseError
+	ExitCodeFileNotSpecified
 )
 
 type CLI struct {
@@ -56,8 +59,75 @@ func (cli *CLI) Run(args []string) int {
 		return ExitCodeOK
 	}
 
+	targets := flags.Args()
+	if len(targets) == 0 {
+		fmt.Fprintln(cli.errStream, "Target YAML file must be specified\n")
+		return ExitCodeFileNotSpecified
+	}
+
+	ch, fin := Load(targets, database)
+
+Loop:
+	for {
+		select {
+		case result := <-ch:
+			baseName := filepath.Base(result.Arg)
+			if result.Error != nil {
+				fmt.Fprintf(cli.outStream, "Failed: %s %s\n", baseName, result.Error)
+			} else {
+				fmt.Fprintf(cli.outStream, "Done: %s\n", baseName)
+			}
+		case <-fin:
+			break Loop
+		}
+	}
+
 	fmt.Fprintln(cli.outStream, "mysql-yaml-loader")
 	return ExitCodeOK
+}
+
+type Result struct {
+	Arg        string
+	Error      error
+	DataSource *DataSource
+}
+
+func Load(args []string, database *Database) (chan Result, chan bool) {
+	ch := make(chan Result)
+	fin := make(chan bool)
+
+	go func() {
+		var wg sync.WaitGroup
+		wg.Add(len(args))
+
+		for _, arg := range args {
+			go func(a string) {
+				result := Result{Arg: a}
+				dataSource, err := NewDataSource(result.Arg)
+				if err != nil {
+					result.Error = err
+					ch <- result
+					wg.Done()
+					return
+				}
+
+				result.DataSource = dataSource
+				if err := database.LoadWithTransaction(dataSource); err != nil {
+					result.Error = err
+					ch <- result
+					wg.Done()
+					return
+				}
+
+				ch <- result
+				wg.Done()
+			}(arg)
+		}
+
+		wg.Wait()
+		fin <- true
+	}()
+	return ch, fin
 }
 
 const usage = `

@@ -32,6 +32,59 @@ func NewDatabase() *Database {
 	return &Database{}
 }
 
+func (db *Database) LoadWithTransaction(dataSource *DataSource) error {
+	var sqlDB *sql.DB
+	var tx *sql.Tx
+	var count int
+
+	queryBuilder := NewQueryBuilder(dataSource)
+	truncateQuery := queryBuilder.TruncateQuery()
+	countQuery := queryBuilder.CountQuery()
+	insertQueries, err := queryBuilder.InsertQueries()
+	if err != nil {
+		return err
+	}
+
+	sqlDB, err = db.Open()
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+
+	tx, err = sqlDB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := recover(); err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	_, err = tx.Exec(truncateQuery)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(insertQueries); i++ {
+		_, err = tx.Exec(insertQueries[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	tx.QueryRow(countQuery).Scan(&count)
+	_, err = tx.Exec(queryBuilder.ResetAutoIncrementQuery(count))
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (db *Database) Open() (*sql.DB, error) {
 	dsn, err := db.DataSourceName()
 	if err != nil {
