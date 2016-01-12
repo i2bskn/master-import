@@ -23,8 +23,10 @@ func (sv StringValue) SetValue(index int, arg interface{}) error {
 	switch arg.(type) {
 	case string:
 		value = strings.Join([]string{"\"", arg.(string), "\""}, "")
-	case int:
+	case int, float64:
 		value = fmt.Sprint(arg)
+	case nil:
+		value = "NULL"
 	default:
 		return fmt.Errorf("Unexpected value: %v", arg)
 	}
