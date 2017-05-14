@@ -1,0 +1,7 @@
+memo = "238092288776a98c337e74646b800a40c9a00882ef1a2dbf7fc4da52e69a6d3e"
+
+[[projects]]
+  name = "github.com/go-sql-driver/mysql"
+  packages = ["."]
+  revision = "a0583e0143b1624142adab07e0e97fe106d99561"
+  version = "v1.3"
